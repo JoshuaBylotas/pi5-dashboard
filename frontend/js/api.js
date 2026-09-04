@@ -32,6 +32,17 @@ export const api = {
   yt: {
     playlists: (force) =>
       jget("/api/youtube/playlists" + (force ? "?refresh=1" : "")),
+    auth: {
+      state: () => jget("/api/youtube/auth/state"),
+      start: () => jpost("/api/youtube/auth/start", {}),
+      poll: () => jpost("/api/youtube/auth/poll", {}),
+      signout: () => jpost("/api/youtube/auth/signout", {}),
+    },
+    mine: {
+      playlists: () => jget("/api/youtube/my/playlists"),
+      items: (id) => jget("/api/youtube/my/playlists/" + encodeURIComponent(id) + "/items"),
+    },
+    audioUrl: (id) => jget("/api/youtube/audio/" + encodeURIComponent(id)),
   },
   google: {
     status: () => jget("/api/google/status"),

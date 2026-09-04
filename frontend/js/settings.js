@@ -22,6 +22,8 @@ function syncForm(s) {
   $("clk-date").checked = !!s.clock?.showDate;
   $("yt-api-key").value = s.youtube?.apiKey || "";
   $("yt-channel").value = s.youtube?.channel || "";
+  $("yt-oauth-id").value = s.youtube?.oauthClientId || "";
+  $("yt-oauth-secret").value = s.youtube?.oauthClientSecret || "";
   $("theme-select").value = s.display?.theme || "dark";
   $("default-view").value = s.display?.defaultView || "home";
   applyTheme(s.display?.theme);
@@ -116,10 +118,99 @@ function wireGoogleSignin() {
   });
 }
 
+// ---- YouTube OAuth (all playlists, incl. Liked) ------------------------
+let _ytPollTimer = null;
+
+async function refreshYtAuthState() {
+  const state = $("yt-oauth-state");
+  const signout = $("yt-signout");
+  const connect = $("yt-connect");
+  if (!state) return;
+  try {
+    const s = await api.yt.auth.state();
+    state.textContent = s.signedIn ? "Connected" : "Not connected";
+    state.style.color = s.signedIn ? "var(--accent-2)" : "var(--muted)";
+    signout?.classList.toggle("hidden", !s.signedIn);
+    connect?.classList.toggle("hidden", !!s.signedIn);
+  } catch (_) {
+    state.textContent = "Unavailable";
+  }
+}
+
+function stopYtPoll() {
+  if (_ytPollTimer) { clearTimeout(_ytPollTimer); _ytPollTimer = null; }
+}
+
+function schedulePoll(seconds) {
+  stopYtPoll();
+  _ytPollTimer = setTimeout(pollYtAuth, Math.max(seconds, 2) * 1000);
+}
+
+async function pollYtAuth() {
+  const codeBox = $("yt-device-code");
+  const state = $("yt-oauth-state");
+  let r;
+  try {
+    r = await api.yt.auth.poll();
+  } catch (_) {
+    schedulePoll(5);
+    return;
+  }
+  if (r.status === "signed_in") {
+    codeBox?.classList.add("hidden");
+    if (state) state.textContent = "Connected";
+    await refreshYtAuthState();
+    window.dispatchEvent(new CustomEvent("youtube-account-changed"));
+    return;
+  }
+  if (r.status === "pending") { schedulePoll(5); return; }
+  // expired / error / none
+  codeBox?.classList.add("hidden");
+  if (state) state.textContent = r.error || (r.status === "expired" ? "Code expired — try again." : "Not connected");
+}
+
+function wireYtOAuth() {
+  $("save-oauth")?.addEventListener("click", () =>
+    store.save({ youtube: {
+      oauthClientId: $("yt-oauth-id").value.trim(),
+      oauthClientSecret: $("yt-oauth-secret").value.trim(),
+    } }));
+
+  $("yt-connect")?.addEventListener("click", async () => {
+    const state = $("yt-oauth-state");
+    const codeBox = $("yt-device-code");
+    if (state) state.textContent = "Starting…";
+    let r;
+    try {
+      r = await api.yt.auth.start();
+    } catch (_) {
+      if (state) state.textContent = "Couldn't reach the backend.";
+      return;
+    }
+    if (!r.ok) { if (state) state.textContent = r.error || "Couldn't start sign-in."; return; }
+    if (codeBox) {
+      codeBox.classList.remove("hidden");
+      codeBox.innerHTML = `Go to <b>${esc(r.verificationUrl || "google.com/device")}</b> ` +
+        `on your phone and enter code <b>${esc(r.userCode)}</b>`;
+    }
+    if (state) state.textContent = "Waiting for approval…";
+    schedulePoll(r.interval || 5);
+  });
+
+  $("yt-signout")?.addEventListener("click", async () => {
+    stopYtPoll();
+    await api.yt.auth.signout();
+    await refreshYtAuthState();
+    window.dispatchEvent(new CustomEvent("youtube-account-changed"));
+  });
+}
+
 export function initSettings() {
   store.subscribe(syncForm);
   wireGoogleSignin();
   refreshGoogleStatus();
+  wireYtOAuth();
+  refreshYtAuthState();
 
   $("loc-search-go").addEventListener("click", locationSearch);
   $("loc-search").addEventListener("keydown", (e) => { if (e.key === "Enter") locationSearch(); });

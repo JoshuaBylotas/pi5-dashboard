@@ -1,1 +1,4 @@
 Flask>=3.0,<4.0
+# YouTube changes what breaks extraction fairly often; keep this current
+# (`.venv/bin/pip install -U yt-dlp`) if the audio fallback stops working.
+yt-dlp

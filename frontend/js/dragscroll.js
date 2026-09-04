@@ -16,10 +16,17 @@ const CONTROLS = 'button, a, input, select, textarea, label, [role="button"], [d
 const FRICTION = 0.94;    // momentum decay per frame
 const MIN_VELOCITY = 0.02; // px/ms below which momentum stops
 
+// A press inside one of these scrolls THAT element instead of the outer
+// content pane -- otherwise a nested independently-scrolling box (the track
+// list) can never actually move, since #content's own scrollTop is unrelated
+// to it. There's currently just the one; add selectors here if more appear.
+const NESTED_SCROLLERS = ".track-list";
+
 export function initDragScroll(el) {
   if (!el) return;
 
   let pointerId = null;
+  let target = el;   // the element actually being scrolled for this gesture
   let startY = 0, startTop = 0;
   let threshold = THRESHOLD;
   let dragging = false;
@@ -36,9 +43,10 @@ export function initDragScroll(el) {
     if (e.pointerType === "mouse" && e.button !== 0) return;
     stopGlide();
     pointerId = e.pointerId;
+    target = e.target?.closest?.(NESTED_SCROLLERS) || el;
     threshold = e.target?.closest?.(CONTROLS) ? CONTROL_THRESHOLD : THRESHOLD;
     startY = lastY = e.clientY;
-    startTop = el.scrollTop;
+    startTop = target.scrollTop;
     lastT = e.timeStamp;
     velocity = 0;
     dragging = false;
@@ -52,7 +60,7 @@ export function initDragScroll(el) {
       dragging = true;
       try { el.setPointerCapture(pointerId); } catch (_) { /* not critical */ }
     }
-    el.scrollTop = startTop - dy;
+    target.scrollTop = startTop - dy;
 
     const dt = e.timeStamp - lastT;
     if (dt > 0) velocity = (e.clientY - lastY) / dt;   // px per ms
@@ -64,9 +72,9 @@ export function initDragScroll(el) {
   function glide() {
     velocity *= FRICTION;
     if (Math.abs(velocity) < MIN_VELOCITY) { glideId = null; return; }
-    const before = el.scrollTop;
-    el.scrollTop = before - velocity * 16;            // ~one frame of travel
-    if (el.scrollTop === before) { glideId = null; return; }  // hit an edge
+    const before = target.scrollTop;
+    target.scrollTop = before - velocity * 16;         // ~one frame of travel
+    if (target.scrollTop === before) { glideId = null; return; }  // hit an edge
     glideId = requestAnimationFrame(glide);
   }
 
@@ -79,7 +87,7 @@ export function initDragScroll(el) {
     // Only steal the click if the drag actually scrolled something. A press that
     // crossed the threshold but moved nothing (already at an edge) was a tap as
     // far as the user is concerned.
-    if (wasDragging && el.scrollTop !== startTop) {
+    if (wasDragging && target.scrollTop !== startTop) {
       // A drag must not also register as a tap on whatever was under the finger.
       el.addEventListener("click", swallowClick, { capture: true, once: true });
       setTimeout(() => el.removeEventListener("click", swallowClick, true), 350);

@@ -69,6 +69,7 @@
           <div class="music-layout">
             <div class="card player-card">
               <div id="yt-player"></div>
+              <audio id="yt-audio-fallback" hidden></audio>
               <div id="player-controls" class="player-controls">
                 <button data-act="prev" class="pbtn" aria-label="Previous">⏮</button>
                 <button data-act="playpause" class="pbtn pbtn-main" aria-label="Play/Pause">▶</button>
@@ -80,7 +81,7 @@
               </div>
               <div id="now-title" class="now-title">Pick a station or paste a link</div>
             </div>
-            <div class="card stations-card">
+            <div id="stations-card" class="card stations-card">
               <div class="quickplay">
                 <input id="yt-url" type="text" inputmode="url"
                        placeholder="Paste a YouTube link or playlist…" />
@@ -100,6 +101,13 @@
                 <button id="pl-refresh" class="btn btn-ghost btn-sm">↻</button>
               </div>
               <div id="playlists" class="stations"></div>
+            </div>
+            <div id="track-view" class="card stations-card hidden">
+              <div class="stations-h-row">
+                <button id="track-back" class="btn btn-ghost btn-sm">← Back</button>
+                <h2 id="track-view-title" class="stations-h">Playlist</h2>
+              </div>
+              <div id="track-list" class="track-list"></div>
             </div>
           </div>
         </section>
@@ -207,6 +215,27 @@
               <button id="save-channel" class="btn">Save</button>
             </div>
             <div id="yt-lib-state" class="muted small"></div>
+          </div>
+
+          <div class="card">
+            <h2>YouTube Playlists (all, incl. Liked)</h2>
+            <p class="muted small">A one-time Google sign-in that lists <b>every</b>
+              playlist you own, including Liked videos — not just public ones on a
+              channel. Needs its own OAuth client (separate from the API key above);
+              see README.md for the one-time setup in Google Cloud Console.</p>
+            <div class="quickplay">
+              <input id="yt-oauth-id" type="text" placeholder="OAuth client id" />
+              <button id="save-oauth" class="btn">Save</button>
+            </div>
+            <div class="quickplay">
+              <input id="yt-oauth-secret" type="text" placeholder="OAuth client secret" />
+            </div>
+            <div class="bt-controls">
+              <button id="yt-connect" class="btn">Connect account</button>
+              <button id="yt-signout" class="btn btn-ghost hidden">Sign out</button>
+              <span id="yt-oauth-state" class="muted"></span>
+            </div>
+            <div id="yt-device-code" class="current-loc hidden"></div>
           </div>
 
           <div class="card">
