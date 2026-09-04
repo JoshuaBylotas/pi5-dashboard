@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Pi5 Dashboard shell",
+  "version": "1.0",
+  "description": "Puts the dashboard's nav rail and a D-pad into the YouTube TV app, so the signed-in player sits inside the same shell as the rest of the dashboard.",
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/tv*"],
+      "js": ["shell.js"],
+      "css": ["shell.css"],
+      "run_at": "document_end",
+      "all_frames": false
+    }
+  ]
+}

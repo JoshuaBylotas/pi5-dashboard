@@ -1,0 +1,51 @@
+/* Dashboard chrome injected into the YouTube TV app.
+   Colours mirror frontend/css/style.css so the two pages read as one app. */
+
+#pi5-rail {
+  position: fixed;
+  left: 0; top: 0; bottom: 0;
+  width: 88px;
+  z-index: 2147483000;
+  background: #131c2b;
+  border-right: 1px solid #1e2a3d;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-top: 8px;
+  font: 500 11px/1.15 system-ui, sans-serif;
+  color: #93a4bd;
+}
+
+#pi5-rail .pi5-nav {
+  width: 76px;
+  padding: 9px 0 7px;
+  border-radius: 12px;
+  background: none;
+  border: 0;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  /* Taps land reliably on this panel; drags are the dashboard's problem, not
+     the rail's, so nothing fancy is needed here. */
+  touch-action: manipulation;
+}
+#pi5-rail .pi5-nav span { font-size: 19px; line-height: 1; }
+#pi5-rail .pi5-nav.active { background: #1c2941; color: #e8eef7; }
+#pi5-rail .pi5-spacer { flex: 1; }
+#pi5-rail .pi5-close { color: #ff6b6b; margin-bottom: 8px; }
+
+/* The TV app positions almost everything `fixed`, so it would ignore any
+   margin we set. #pi5-stage carries a transform, which makes it the containing
+   block for its fixed descendants -- that is what actually insets the app. */
+#pi5-stage {
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 88px;
+  transform: translateZ(0);
+  overflow: hidden;
+}
+
+/* No D-pad styles: leanback ignores untrusted key events, so on-screen arrow
+   buttons cannot drive it from a content script. Taps do work. */

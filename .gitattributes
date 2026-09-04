@@ -1,0 +1,3 @@
+# Keep LF everywhere: these files are deployed to Linux, and a stray CR in a
+# .sh or .py is a syntax error on the Pi.
+* text=auto eol=lf

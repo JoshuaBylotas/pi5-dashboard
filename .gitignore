@@ -1,0 +1,18 @@
+# ---- private / machine-specific -------------------------------------------
+# Everything in private/ is deliberately excluded from this public repo.
+# It has its own git repo pointing at a PRIVATE GitHub remote.
+private/
+
+# ---- runtime --------------------------------------------------------------
+.venv/
+__pycache__/
+*.py[cod]
+settings.json
+settings.json.tmp
+
+# ---- editor / OS ----------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini

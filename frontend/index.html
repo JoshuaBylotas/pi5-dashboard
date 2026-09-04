@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Pi5 Dashboard</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body data-theme="dark">
+  <div id="app">
+    <!-- Left navigation rail -->
+    <nav id="rail" aria-label="Main navigation">
+      <button class="nav-btn active" data-view="home" aria-label="Home">
+        <span class="ico">🏠</span><span class="lbl">Home</span>
+      </button>
+      <button class="nav-btn" data-view="music" aria-label="Music">
+        <span class="ico">🎵</span><span class="lbl">Music</span>
+      </button>
+      <button class="nav-btn" data-view="weather" aria-label="Weather">
+        <span class="ico">🌤️</span><span class="lbl">Weather</span>
+      </button>
+      <button class="nav-btn" data-view="settings" aria-label="Settings">
+        <span class="ico">⚙️</span><span class="lbl">Settings</span>
+      </button>
+      <button id="exit-btn" class="nav-btn nav-exit" aria-label="Close dashboard">
+        <span class="ico">⏻</span><span class="lbl">Close</span>
+      </button>
+    </nav>
+
+    <!-- Main column -->
+    <div id="main">
+      <header id="topbar">
+        <div id="top-clock" class="top-clock">--:--</div>
+        <div id="top-status" class="top-status">
+          <span id="bt-indicator" class="chip" title="Bluetooth">🔇 <span id="bt-name">No speaker</span></span>
+          <span id="net-indicator" class="chip" title="Connection">●</span>
+        </div>
+      </header>
+
+      <main id="content">
+        <!-- HOME -->
+        <section class="view active" id="view-home">
+          <div class="home-grid">
+            <div class="card clock-card">
+              <div id="home-clock" class="big-clock">--:--</div>
+              <div id="home-date" class="big-date">—</div>
+            </div>
+            <div class="card weather-card" data-goto="weather">
+              <div class="wx-now">
+                <div id="home-wx-icon" class="wx-icon">⋯</div>
+                <div>
+                  <div id="home-wx-temp" class="wx-temp">--°</div>
+                  <div id="home-wx-desc" class="wx-desc">Loading…</div>
+                </div>
+              </div>
+              <div id="home-wx-place" class="wx-place">—</div>
+            </div>
+            <div class="card nowplaying-card" data-goto="music">
+              <div class="np-title">Now Playing</div>
+              <div id="home-np" class="np-body">Nothing playing</div>
+              <div class="np-hint">Tap to open Music →</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- MUSIC -->
+        <section class="view" id="view-music">
+          <div class="section-head"><h1>Music</h1></div>
+          <div class="music-layout">
+            <div class="card player-card">
+              <div id="yt-player"></div>
+              <div id="player-controls" class="player-controls">
+                <button data-act="prev" class="pbtn" aria-label="Previous">⏮</button>
+                <button data-act="playpause" class="pbtn pbtn-main" aria-label="Play/Pause">▶</button>
+                <button data-act="next" class="pbtn" aria-label="Next">⏭</button>
+                <div class="vol">
+                  <span>🔊</span>
+                  <input id="vol" type="range" min="0" max="100" value="60" />
+                </div>
+              </div>
+              <div id="now-title" class="now-title">Pick a station or paste a link</div>
+            </div>
+            <div class="card stations-card">
+              <div class="quickplay">
+                <input id="yt-url" type="text" inputmode="url"
+                       placeholder="Paste a YouTube link or playlist…" />
+                <button id="yt-play-url" class="btn">Play</button>
+              </div>
+              <div id="yt-search-wrap" class="hidden">
+                <div class="quickplay">
+                  <input id="yt-search" type="text" placeholder="Search YouTube…" />
+                  <button id="yt-search-go" class="btn">Search</button>
+                </div>
+                <div id="yt-results" class="yt-results"></div>
+              </div>
+              <h2 class="stations-h">Stations</h2>
+              <div id="stations" class="stations"></div>
+              <div class="stations-h-row">
+                <h2 class="stations-h">Your playlists</h2>
+                <button id="pl-refresh" class="btn btn-ghost btn-sm">↻</button>
+              </div>
+              <div id="playlists" class="stations"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- WEATHER -->
+        <section class="view" id="view-weather">
+          <div class="section-head"><h1>Weather</h1>
+            <button id="wx-refresh" class="btn btn-ghost">↻ Refresh</button></div>
+          <div class="card wx-current-card">
+            <div class="wx-current">
+              <div id="wx-big-icon" class="wx-icon-lg">⋯</div>
+              <div class="wx-current-main">
+                <div id="wx-big-temp" class="wx-temp-lg">--°</div>
+                <div id="wx-big-desc" class="wx-desc-lg">Loading…</div>
+                <div id="wx-place" class="wx-place">—</div>
+              </div>
+              <div class="wx-current-meta">
+                <div>Feels like <b id="wx-feels">--°</b></div>
+                <div>Humidity <b id="wx-humidity">--%</b></div>
+                <div>Wind <b id="wx-wind">--</b></div>
+              </div>
+            </div>
+          </div>
+          <h2 class="sub-h">7-Day Forecast</h2>
+          <div id="wx-forecast" class="wx-forecast"></div>
+        </section>
+
+        <!-- SETTINGS -->
+        <section class="view" id="view-settings">
+          <div class="section-head"><h1>Settings</h1></div>
+
+          <div class="card">
+            <h2>Location &amp; Weather</h2>
+            <div class="quickplay">
+              <input id="loc-search" type="text" placeholder="Search city…" />
+              <button id="loc-search-go" class="btn">Search</button>
+            </div>
+            <div id="loc-results" class="loc-results"></div>
+            <div class="current-loc">Current: <b id="loc-current">—</b></div>
+            <div class="row">
+              <label>Units
+                <select id="unit-temp">
+                  <option value="fahrenheit">°F</option>
+                  <option value="celsius">°C</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Clock</h2>
+            <label class="switch-row"><input type="checkbox" id="clk-24h" /> 24-hour time</label>
+            <label class="switch-row"><input type="checkbox" id="clk-secs" /> Show seconds</label>
+            <label class="switch-row"><input type="checkbox" id="clk-date" /> Show date</label>
+          </div>
+
+          <div class="card">
+            <h2>Bluetooth Speaker</h2>
+            <div class="bt-controls">
+              <button id="bt-scan" class="btn">🔍 Scan for devices</button>
+              <span id="bt-scan-state" class="muted"></span>
+            </div>
+            <div id="bt-list" class="bt-list"></div>
+            <div id="bt-msg" class="bt-msg muted"></div>
+          </div>
+
+          <div class="card">
+            <h2>Music Stations</h2>
+            <p class="muted small">Pinned entries. A link works whether it points at a
+              video, a live stream or a playlist — including unlisted ones.</p>
+            <div id="station-editor" class="station-editor"></div>
+            <div class="quickplay">
+              <input id="new-station-name" type="text" placeholder="Name" />
+              <input id="new-station-url" type="text" placeholder="YouTube URL / playlist" />
+              <button id="add-station" class="btn">Add</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Google Account</h2>
+            <div class="current-loc">Status: <b id="g-acct-state">Checking…</b></div>
+            <p class="muted small">Needed for your <b>private</b> playlists and
+              recently-played. Tapping below closes the dashboard, opens a real Google
+              sign-in page and brings up the on-screen keyboard. Sign in, then tap the
+              <b>✕</b> on that window's titlebar to come back. Tick “stay signed in” —
+              a session-only login won't survive a restart.</p>
+            <div class="bt-controls">
+              <button id="g-signin" class="btn">⌨ Sign in to Google</button>
+              <span id="g-signin-state" class="muted"></span>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>YouTube Library</h2>
+            <p class="muted small">Add a YouTube Data API key and your channel to list
+              your playlists on the Music screen automatically, and to enable search.
+              Only <b>public</b> playlists can be listed — private ones need a signed-in
+              browser session, which this device doesn't have.</p>
+            <div class="quickplay">
+              <input id="yt-api-key" type="text" placeholder="YouTube Data API key" />
+              <button id="save-api-key" class="btn">Save</button>
+            </div>
+            <div class="quickplay">
+              <input id="yt-channel" type="text" placeholder="Your channel — @handle or UC… id" />
+              <button id="save-channel" class="btn">Save</button>
+            </div>
+            <div id="yt-lib-state" class="muted small"></div>
+          </div>
+
+          <div class="card">
+            <h2>Display</h2>
+            <label class="switch-row">Theme
+              <select id="theme-select">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+              </select>
+            </label>
+            <label class="switch-row">Start on
+              <select id="default-view">
+                <option value="home">Home</option>
+                <option value="music">Music</option>
+                <option value="weather">Weather</option>
+              </select>
+            </label>
+          </div>
+        </section>
+      </main>
+
+      <!-- Persistent mini player -->
+      <footer id="miniplayer" class="hidden">
+        <button id="mini-toggle" class="pbtn" aria-label="Play/Pause">▶</button>
+        <div id="mini-title" class="mini-title">—</div>
+        <button id="mini-open" class="btn btn-ghost">Open</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Exit confirm -->
+  <div id="exit-modal" class="modal hidden">
+    <div class="modal-box">
+      <h2>Close dashboard?</h2>
+      <p>This exits fullscreen back to the desktop. It restarts on next boot.</p>
+      <div class="modal-actions">
+        <button id="exit-cancel" class="btn btn-ghost">Cancel</button>
+        <button id="exit-confirm" class="btn btn-danger">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js" type="module"></script>
+</body>
+</html>
