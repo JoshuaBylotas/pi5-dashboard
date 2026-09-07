@@ -13,6 +13,11 @@ async function jpost(url, body) {
   if (!r.ok) throw new Error(`${url} → ${r.status}`);
   return r.json();
 }
+async function jdelete(url) {
+  const r = await fetch(url, { method: "DELETE" });
+  if (!r.ok) throw new Error(`${url} → ${r.status}`);
+  return r.json();
+}
 
 export const api = {
   getSettings: () => jget("/api/settings"),
@@ -47,5 +52,26 @@ export const api = {
   google: {
     status: () => jget("/api/google/status"),
     signin: () => jpost("/api/google/signin", {}),
+  },
+  calendar: {
+    upcoming: () => jget("/api/calendar/upcoming"),
+  },
+  airQuality: () => jget("/api/airquality"),
+  shopping: {
+    whoami: () => jget("/api/shopping/whoami"),
+    lists: () => jget("/api/shopping/lists"),
+    createList: (name) => jpost("/api/shopping/lists", { name }),
+    deleteList: (id) => jdelete("/api/shopping/lists/" + encodeURIComponent(id)),
+    items: (listId) => jget("/api/shopping/lists/" + encodeURIComponent(listId) + "/items"),
+    addItem: (listId, text) =>
+      jpost("/api/shopping/lists/" + encodeURIComponent(listId) + "/items", { text }),
+    toggleItem: (listId, itemId) =>
+      jpost("/api/shopping/lists/" + encodeURIComponent(listId) +
+            "/items/" + encodeURIComponent(itemId) + "/toggle", {}),
+    deleteItem: (listId, itemId) =>
+      jdelete("/api/shopping/lists/" + encodeURIComponent(listId) +
+              "/items/" + encodeURIComponent(itemId)),
+    clearChecked: (listId) =>
+      jpost("/api/shopping/lists/" + encodeURIComponent(listId) + "/clear-checked", {}),
   },
 };

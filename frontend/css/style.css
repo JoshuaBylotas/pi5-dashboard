@@ -36,7 +36,7 @@ body {
   padding: 12px 8px; gap: 8px; border-right: 1px solid var(--border);
 }
 .nav-btn {
-  border: 0; background: transparent; color: var(--muted);
+  border: 0; background: transparent; color: var(--muted); text-decoration: none;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 4px; min-height: var(--tap); border-radius: 14px; cursor: pointer;
   font-size: 13px; transition: background .15s, color .15s;
@@ -164,6 +164,25 @@ h2 { font-size: 18px; margin: 0 0 12px; }
 .wx-day .hi { font-weight: 700; }
 .wx-day .lo { color: var(--muted); }
 .wx-day .pop { color: var(--accent); font-size: 12px; margin-top: 4px; }
+
+/* --- Air Quality --- */
+.aq-current { text-align: center; padding: 18px; border-radius: 14px; margin-bottom: 16px;
+  background: var(--card-2); }
+.aq-aqi { font-size: 56px; font-weight: 700; }
+.aq-aqi-label { font-size: 18px; font-weight: 600; margin-top: 4px; }
+.aq-good .aq-aqi, .aq-good .aq-aqi-label { color: var(--accent-2); }
+.aq-moderate .aq-aqi, .aq-moderate .aq-aqi-label { color: #e0c23e; }
+.aq-sensitive .aq-aqi, .aq-sensitive .aq-aqi-label { color: #e0a44a; }
+.aq-unhealthy .aq-aqi, .aq-unhealthy .aq-aqi-label,
+.aq-very-unhealthy .aq-aqi, .aq-very-unhealthy .aq-aqi-label,
+.aq-hazardous .aq-aqi, .aq-hazardous .aq-aqi-label { color: var(--danger); }
+.aq-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 12px;
+  text-align: center; }
+.aq-metrics div { background: var(--card-2); border-radius: 12px; padding: 12px; color: var(--muted); }
+.aq-metrics b { display: block; font-size: 20px; color: var(--text); margin-top: 4px; }
+.aq-pollen { display: grid; gap: 6px; }
+.aq-pollen-row { display: flex; justify-content: space-between; background: var(--card-2);
+  border-radius: 10px; padding: 10px 14px; }
 
 /* --- Settings --- */
 input[type=text], select {

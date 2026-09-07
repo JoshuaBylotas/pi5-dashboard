@@ -8,8 +8,12 @@ Type=simple
 # __INSTALL_DIR__ is replaced by install.sh with the real path.
 WorkingDirectory=__INSTALL_DIR__/backend
 ExecStart=__INSTALL_DIR__/.venv/bin/python __INSTALL_DIR__/backend/app.py
-Environment=PI5_DASHBOARD_HOST=127.0.0.1
+# 0.0.0.0 so the reverse proxy for shopping.bylotas.com can reach this
+# process; @localhost_only + ProxyFix in app.py keep everything else off the
+# network regardless (see README.md).
+Environment=PI5_DASHBOARD_HOST=0.0.0.0
 Environment=PI5_DASHBOARD_PORT=8080
+Environment=PI5_DASHBOARD_PROXY_HOPS=1
 Restart=on-failure
 RestartSec=3
 

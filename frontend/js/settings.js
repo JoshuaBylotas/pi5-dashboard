@@ -24,6 +24,10 @@ function syncForm(s) {
   $("yt-channel").value = s.youtube?.channel || "";
   $("yt-oauth-id").value = s.youtube?.oauthClientId || "";
   $("yt-oauth-secret").value = s.youtube?.oauthClientSecret || "";
+  $("entra-tenant-id").value = s.entra?.tenantId || "";
+  $("entra-client-id").value = s.entra?.clientId || "";
+  $("entra-client-secret").value = s.entra?.clientSecret || "";
+  $("entra-redirect-uri").value = s.entra?.redirectUri || "";
   $("theme-select").value = s.display?.theme || "dark";
   $("default-view").value = s.display?.defaultView || "home";
   applyTheme(s.display?.theme);
@@ -205,12 +209,27 @@ function wireYtOAuth() {
   });
 }
 
+function wireEntra() {
+  $("save-entra")?.addEventListener("click", async () => {
+    const state = $("entra-state");
+    if (state) state.textContent = "Saving…";
+    await store.save({ entra: {
+      tenantId: $("entra-tenant-id").value.trim(),
+      clientId: $("entra-client-id").value.trim(),
+      clientSecret: $("entra-client-secret").value.trim(),
+      redirectUri: $("entra-redirect-uri").value.trim(),
+    } });
+    if (state) state.textContent = "Saved.";
+  });
+}
+
 export function initSettings() {
   store.subscribe(syncForm);
   wireGoogleSignin();
   refreshGoogleStatus();
   wireYtOAuth();
   refreshYtAuthState();
+  wireEntra();
 
   $("loc-search-go").addEventListener("click", locationSearch);
   $("loc-search").addEventListener("keydown", (e) => { if (e.key === "Enter") locationSearch(); });

@@ -7,22 +7,30 @@ Serves the touchscreen dashboard frontend and exposes a small local API for:
   - Bluetooth speaker management (wraps bluetoothctl)
   - kiosk/system control (exit the fullscreen browser back to the desktop)
 
-Third-party dependencies: Flask, and yt-dlp (audio-only fallback for videos
-the YouTube IFrame embed refuses to play -- see README.md for the tradeoffs).
+Third-party dependencies: Flask; yt-dlp (audio-only fallback for videos the
+YouTube IFrame embed refuses to play -- see README.md for the tradeoffs);
+msal (Entra ID sign-in for the public shopping list).
 """
 
 import json
 import os
 import re
+import secrets
+from datetime import datetime, timedelta, timezone
 import subprocess
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
+from functools import wraps
 from http import HTTPStatus
 
-from flask import Flask, jsonify, request, send_from_directory
+import msal
+from flask import (Flask, jsonify, redirect, request, send_from_directory,
+                    session, url_for)
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import bluetooth as bt  # local module (backend/bluetooth.py)
 
@@ -37,6 +45,8 @@ SETTINGS_PATH = os.path.join(DATA_DIR, "settings.json")
 # Kept separate from settings.json (and its private-repo snapshot) since this
 # holds a live refresh token rather than plain config.
 TOKEN_PATH = os.path.join(DATA_DIR, "youtube_token.json")
+SHOPPING_PATH = os.path.join(DATA_DIR, "shopping.json")
+SECRET_KEY_PATH = os.path.join(DATA_DIR, "flask_secret.key")
 
 DEFAULT_SETTINGS = {
     "location": {
@@ -73,10 +83,79 @@ DEFAULT_SETTINGS = {
         "autoplay": False,
     },
     "display": {"theme": "dark", "defaultView": "home"},
+    "entra": {
+        # Single-tenant app registration for the public shopping list at
+        # shopping.bylotas.com. NOT the transcore.com work tenant -- see
+        # README.md for why, and for how to register the app.
+        "tenantId": "",
+        "clientId": "",
+        "clientSecret": "",
+        "redirectUri": "https://shopping.bylotas.com/auth/callback",
+    },
 }
 
+def _load_or_create_secret_key():
+    try:
+        with open(SECRET_KEY_PATH, "r", encoding="utf-8") as fh:
+            key = fh.read().strip()
+            if key:
+                return key
+    except FileNotFoundError:
+        pass
+    os.makedirs(DATA_DIR, exist_ok=True)
+    key = secrets.token_hex(32)
+    with open(SECRET_KEY_PATH, "w", encoding="utf-8") as fh:
+        fh.write(key)
+    os.chmod(SECRET_KEY_PATH, 0o600)
+    return key
+
+
 app = Flask(__name__, static_folder=None)
+app.secret_key = _load_or_create_secret_key()
+app.config.update(
+    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+    # Not Secure-only: the kiosk itself hits /shopping over plain HTTP via
+    # 127.0.0.1, alongside HTTPS from the public reverse proxy. Fine for a
+    # family shopping list; wouldn't be for anything more sensitive.
+)
+
+# The backend binds to every interface (see main()) so the shopping list can
+# be reached through a reverse proxy at shopping.bylotas.com. PI5_DASHBOARD_
+# PROXY_HOPS must match the number of reverse-proxy hops actually in front of
+# it (1 for a single proxy) -- get this wrong and either real client IPs are
+# lost, or, worse, a client can forge X-Forwarded-For to impersonate 127.0.0.1
+# and slip past @localhost_only. See README.md.
+_PROXY_HOPS = int(os.environ.get("PI5_DASHBOARD_PROXY_HOPS", "1"))
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=_PROXY_HOPS, x_proto=_PROXY_HOPS,
+                        x_host=_PROXY_HOPS)
+
 _lock = threading.Lock()
+
+
+def localhost_only(fn):
+    """Restrict a route to the Pi itself. Nothing here -- settings (which
+    holds OAuth/Entra secrets), Bluetooth control, kiosk control, and the
+    Google/YouTube endpoints -- should ever be reachable from another device,
+    on the LAN or (via the reverse proxy) the public internet."""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if request.remote_addr not in ("127.0.0.1", "::1"):
+            return jsonify({"ok": False, "error": "not available on the network"}), HTTPStatus.FORBIDDEN
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def login_required(fn):
+    """Restrict a route to a signed-in Entra ID session (the shopping list)."""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not session.get("user"):
+            if request.path.startswith("/api/"):
+                return jsonify({"ok": False, "error": "sign-in required"}), HTTPStatus.UNAUTHORIZED
+            return redirect(url_for("auth_login", next=request.path))
+        return fn(*args, **kwargs)
+    return wrapper
 
 
 def _ensure_data_dir():
@@ -128,11 +207,13 @@ def static_files(path):
 # ------------------------------------------------------------------ settings
 
 @app.route("/api/settings", methods=["GET"])
+@localhost_only
 def get_settings():
     return jsonify(load_settings())
 
 
 @app.route("/api/settings", methods=["POST"])
+@localhost_only
 def post_settings():
     body = request.get_json(force=True, silent=True) or {}
     return jsonify(save_settings(body))
@@ -147,6 +228,7 @@ def _http_get_json(url, timeout=10):
 
 
 @app.route("/api/weather")
+@localhost_only
 def weather():
     s = load_settings()
     loc, units = s["location"], s["units"]
@@ -173,6 +255,7 @@ def weather():
 
 
 @app.route("/api/geocode")
+@localhost_only
 def geocode():
     query = request.args.get("q", "").strip()
     if not query:
@@ -189,16 +272,19 @@ def geocode():
 # ----------------------------------------------------------------- bluetooth
 
 @app.route("/api/bluetooth/status")
+@localhost_only
 def bt_status():
     return jsonify(bt.status())
 
 
 @app.route("/api/bluetooth/devices")
+@localhost_only
 def bt_devices():
     return jsonify({"devices": bt.devices(), "scanning": bt.is_scanning()})
 
 
 @app.route("/api/bluetooth/scan", methods=["POST"])
+@localhost_only
 def bt_scan():
     seconds = int((request.get_json(silent=True) or {}).get("seconds", 15))
     bt.start_scan(seconds)
@@ -210,21 +296,25 @@ def _mac_from_request():
 
 
 @app.route("/api/bluetooth/pair", methods=["POST"])
+@localhost_only
 def bt_pair():
     return jsonify(bt.pair(_mac_from_request()))
 
 
 @app.route("/api/bluetooth/connect", methods=["POST"])
+@localhost_only
 def bt_connect():
     return jsonify(bt.connect(_mac_from_request()))
 
 
 @app.route("/api/bluetooth/disconnect", methods=["POST"])
+@localhost_only
 def bt_disconnect():
     return jsonify(bt.disconnect(_mac_from_request()))
 
 
 @app.route("/api/bluetooth/remove", methods=["POST"])
+@localhost_only
 def bt_remove():
     return jsonify(bt.remove(_mac_from_request()))
 
@@ -232,6 +322,7 @@ def bt_remove():
 # -------------------------------------------------------------------- system
 
 @app.route("/api/system/exit-kiosk", methods=["POST"])
+@localhost_only
 def exit_kiosk():
     """Close the kiosk browser so the user drops back to the desktop."""
     killed = []
@@ -246,6 +337,7 @@ def exit_kiosk():
 
 
 @app.route("/api/system/info")
+@localhost_only
 def system_info():
     return jsonify({
         "hostname": os.uname().nodename if hasattr(os, "uname") else "",
@@ -305,11 +397,13 @@ def google_signed_in():
 
 
 @app.route("/api/google/status")
+@localhost_only
 def google_status():
     return jsonify(google_signed_in())
 
 
 @app.route("/api/google/signin", methods=["POST"])
+@localhost_only
 def google_signin():
     """Swap the kiosk for a real Google sign-in page with an on-screen keyboard.
 
@@ -415,6 +509,7 @@ def _fetch_playlists(key, channel_ref):
 
 
 @app.route("/api/youtube/playlists")
+@localhost_only
 def youtube_playlists():
     """Public playlists for the configured channel, cached to protect quota."""
     cfg = load_settings().get("youtube", {})
@@ -451,7 +546,9 @@ def youtube_playlists():
 # client ("TV and Limited Input Devices" type).
 _GOOGLE_DEVICE_URL = "https://oauth2.googleapis.com/device/code"
 _GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-_YT_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
+# The same sign-in also covers the Calendar view -- one token, two scopes.
+_GOOGLE_SCOPES = ("https://www.googleapis.com/auth/youtube.readonly "
+                  "https://www.googleapis.com/auth/calendar.readonly")
 
 _device_lock = threading.Lock()
 _device_flow = {}   # in-memory only; one pending sign-in at a time
@@ -532,8 +629,9 @@ def _get_access_token():
         return tok["access_token"], None
 
 
-def _yt_get_auth(path, token, **params):
-    url = _YT_API + path + "?" + urllib.parse.urlencode(params)
+def _authed_get(url, token, **params):
+    if params:
+        url = url + "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
     try:
         with urllib.request.urlopen(req, timeout=12) as resp:
@@ -550,19 +648,25 @@ def _yt_get_auth(path, token, **params):
         return None, str(exc)[:200]
 
 
+def _yt_get_auth(path, token, **params):
+    return _authed_get(_YT_API + path, token, **params)
+
+
 @app.route("/api/youtube/auth/state")
+@localhost_only
 def youtube_auth_state():
     tok = _load_token()
     return jsonify({"signedIn": bool(tok and tok.get("refresh_token"))})
 
 
 @app.route("/api/youtube/auth/start", methods=["POST"])
+@localhost_only
 def youtube_auth_start():
     cfg = load_settings().get("youtube", {})
     client_id = cfg.get("oauthClientId", "")
     if not client_id:
         return jsonify({"ok": False, "error": "Add an OAuth client id in Settings first."})
-    data, err = _post_form(_GOOGLE_DEVICE_URL, {"client_id": client_id, "scope": _YT_SCOPE})
+    data, err = _post_form(_GOOGLE_DEVICE_URL, {"client_id": client_id, "scope": _GOOGLE_SCOPES})
     if err or not data or "device_code" not in data:
         return jsonify({"ok": False, "error": (data or {}).get("error_description", err) or "request failed"})
     with _device_lock:
@@ -581,6 +685,7 @@ def youtube_auth_start():
 
 
 @app.route("/api/youtube/auth/poll", methods=["POST"])
+@localhost_only
 def youtube_auth_poll():
     cfg = load_settings().get("youtube", {})
     with _device_lock:
@@ -617,12 +722,14 @@ def youtube_auth_poll():
 
 
 @app.route("/api/youtube/auth/signout", methods=["POST"])
+@localhost_only
 def youtube_auth_signout():
     _clear_token()
     return jsonify({"ok": True})
 
 
 @app.route("/api/youtube/my/playlists")
+@localhost_only
 def youtube_my_playlists():
     """Every playlist the signed-in user owns, including Liked videos.
 
@@ -668,6 +775,7 @@ def youtube_my_playlists():
 
 
 @app.route("/api/youtube/my/playlists/<playlist_id>/items")
+@localhost_only
 def youtube_my_playlist_items(playlist_id):
     """Tracks in one of the signed-in user's playlists, with duration and
     per-video embeddability (a private playlist can hold public videos)."""
@@ -728,6 +836,7 @@ def youtube_my_playlist_items(playlist_id):
 # to play (embedding disabled, region licensing, etc.), where the alternative
 # is no audio at all. Keep yt-dlp updated (see requirements.txt) or this rots.
 @app.route("/api/youtube/audio/<video_id>")
+@localhost_only
 def youtube_audio_url(video_id):
     try:
         import yt_dlp
@@ -751,11 +860,268 @@ def youtube_audio_url(video_id):
     return jsonify({"ok": True, "url": url, "title": info.get("title", "")})
 
 
+# ------------------------------------------------------------------- calendar
+
+# Reuses the same Google sign-in as the YouTube playlists (see _GOOGLE_SCOPES)
+# -- one device-code flow covers both. Read-only: no create/edit here.
+_CAL_API = "https://www.googleapis.com/calendar/v3/"
+
+
+@app.route("/api/calendar/upcoming")
+@localhost_only
+def calendar_upcoming():
+    token, err = _get_access_token()
+    if err:
+        return jsonify({"ok": False, "needs": "signin", "error": err, "events": []})
+    params = dict(timeMin=datetime.now(timezone.utc).isoformat(), maxResults=20,
+                  singleEvents="true", orderBy="startTime")
+    data, e = _authed_get(_CAL_API + "calendars/primary/events", token, **params)
+    if e:
+        return jsonify({"ok": False, "error": e, "events": []})
+    events = []
+    for it in data.get("items", []):
+        start = it.get("start", {})
+        events.append({
+            "id": it.get("id"),
+            "title": it.get("summary", "(no title)"),
+            "start": start.get("dateTime") or start.get("date"),
+            "allDay": "date" in start,
+            "location": it.get("location", ""),
+        })
+    return jsonify({"ok": True, "events": events})
+
+
+# ---------------------------------------------------------------- air quality
+
+@app.route("/api/airquality")
+@localhost_only
+def air_quality():
+    s = load_settings()
+    loc = s["location"]
+    params = {
+        "latitude": loc["latitude"], "longitude": loc["longitude"],
+        "current": "us_aqi,pm2_5,pm10,ozone,uv_index",
+        # Pollen coverage is the CAMS European model -- only Europe gets real
+        # values; other locations get nulls the frontend shows as "unavailable".
+        "hourly": ("us_aqi,alder_pollen,birch_pollen,grass_pollen,"
+                   "mugwort_pollen,olive_pollen,ragweed_pollen"),
+        "timezone": loc.get("timezone", "auto") or "auto",
+    }
+    url = "https://air-quality-api.open-meteo.com/v1/air-quality?" + urllib.parse.urlencode(params)
+    try:
+        return jsonify(_http_get_json(url))
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), HTTPStatus.BAD_GATEWAY
+
+
+# ------------------------------------------------------- entra id (shopping list)
+
+# Sign-in for the public shopping list at shopping.bylotas.com, via a
+# single-tenant Entra ID app registration. See README.md for registering it
+# (redirect URI, client secret) -- deliberately NOT the transcore.com work
+# tenant, since this is a personal/family tool.
+_ENTRA_SCOPES = ["User.Read"]  # openid/profile/offline_access are implicit
+
+
+def _msal_app():
+    cfg = load_settings().get("entra", {})
+    authority = f"https://login.microsoftonline.com/{cfg.get('tenantId', '')}"
+    return msal.ConfidentialClientApplication(
+        cfg.get("clientId", ""), authority=authority,
+        client_credential=cfg.get("clientSecret", ""))
+
+
+@app.route("/auth/login")
+def auth_login():
+    cfg = load_settings().get("entra", {})
+    if not cfg.get("tenantId") or not cfg.get("clientId"):
+        return "Entra ID isn't configured yet -- see Settings on the dashboard.", \
+            HTTPStatus.SERVICE_UNAVAILABLE
+    session["auth_state"] = secrets.token_hex(16)
+    session["next"] = request.args.get("next", "/shopping")
+    auth_url = _msal_app().get_authorization_request_url(
+        _ENTRA_SCOPES, state=session["auth_state"], redirect_uri=cfg.get("redirectUri"))
+    return redirect(auth_url)
+
+
+@app.route("/auth/callback")
+def auth_callback():
+    if not session.get("auth_state") or request.args.get("state") != session.get("auth_state"):
+        return "Invalid sign-in state -- please try again.", HTTPStatus.BAD_REQUEST
+    code = request.args.get("code")
+    if not code:
+        return f"Sign-in failed: {request.args.get('error_description', 'no code returned')}", \
+            HTTPStatus.BAD_REQUEST
+    cfg = load_settings().get("entra", {})
+    result = _msal_app().acquire_token_by_authorization_code(
+        code, scopes=_ENTRA_SCOPES, redirect_uri=cfg.get("redirectUri"))
+    if "id_token_claims" not in result:
+        return f"Sign-in failed: {result.get('error_description', 'unknown error')}", \
+            HTTPStatus.BAD_REQUEST
+    claims = result["id_token_claims"]
+    session.pop("auth_state", None)
+    session.permanent = True
+    session["user"] = {
+        "name": claims.get("name", "Someone"),
+        "email": claims.get("preferred_username", ""),
+    }
+    return redirect(session.pop("next", "/shopping"))
+
+
+@app.route("/auth/logout")
+def auth_logout():
+    session.clear()
+    return redirect("/shopping")
+
+
+# ------------------------------------------------------------------ shopping list
+
+# Public (via the reverse proxy) but gated by @login_required, not
+# @localhost_only -- this is the one feature meant to be reachable off the Pi.
+_shopping_lock = threading.Lock()
+
+
+def _load_shopping():
+    try:
+        with open(SHOPPING_PATH, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"lists": []}
+
+
+def _save_shopping(data):
+    _ensure_data_dir()
+    tmp = SHOPPING_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+    os.replace(tmp, SHOPPING_PATH)
+
+
+def _find_list(data, list_id):
+    return next((lst for lst in data["lists"] if lst["id"] == list_id), None)
+
+
+@app.route("/shopping")
+@login_required
+def shopping_page():
+    return send_from_directory(FRONTEND_DIR, "shopping.html")
+
+
+@app.route("/api/shopping/whoami")
+@login_required
+def shopping_whoami():
+    return jsonify({"ok": True, "user": session["user"]})
+
+
+@app.route("/api/shopping/lists", methods=["GET"])
+@login_required
+def shopping_lists():
+    data = _load_shopping()
+    summary = [{"id": lst["id"], "name": lst["name"], "count": len(lst["items"]),
+                "uncheckedCount": sum(1 for it in lst["items"] if not it["checked"])}
+               for lst in data["lists"]]
+    return jsonify({"ok": True, "lists": summary})
+
+
+@app.route("/api/shopping/lists", methods=["POST"])
+@login_required
+def shopping_create_list():
+    name = (request.get_json(force=True, silent=True) or {}).get("name", "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "name required"}), HTTPStatus.BAD_REQUEST
+    with _shopping_lock:
+        data = _load_shopping()
+        new_list = {"id": uuid.uuid4().hex[:10], "name": name[:60], "items": []}
+        data["lists"].append(new_list)
+        _save_shopping(data)
+    return jsonify({"ok": True, "list": new_list})
+
+
+@app.route("/api/shopping/lists/<list_id>", methods=["DELETE"])
+@login_required
+def shopping_delete_list(list_id):
+    with _shopping_lock:
+        data = _load_shopping()
+        data["lists"] = [lst for lst in data["lists"] if lst["id"] != list_id]
+        _save_shopping(data)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/shopping/lists/<list_id>/items", methods=["GET"])
+@login_required
+def shopping_items(list_id):
+    data = _load_shopping()
+    lst = _find_list(data, list_id)
+    if not lst:
+        return jsonify({"ok": False, "error": "list not found"}), HTTPStatus.NOT_FOUND
+    return jsonify({"ok": True, "name": lst["name"], "items": lst["items"]})
+
+
+@app.route("/api/shopping/lists/<list_id>/items", methods=["POST"])
+@login_required
+def shopping_add_item(list_id):
+    text = (request.get_json(force=True, silent=True) or {}).get("text", "").strip()
+    if not text:
+        return jsonify({"ok": False, "error": "empty"}), HTTPStatus.BAD_REQUEST
+    with _shopping_lock:
+        data = _load_shopping()
+        lst = _find_list(data, list_id)
+        if not lst:
+            return jsonify({"ok": False, "error": "list not found"}), HTTPStatus.NOT_FOUND
+        item = {"id": uuid.uuid4().hex[:10], "text": text[:200], "checked": False,
+                "addedBy": session["user"]["name"], "addedAt": time.time()}
+        lst["items"].append(item)
+        _save_shopping(data)
+    return jsonify({"ok": True, "item": item})
+
+
+@app.route("/api/shopping/lists/<list_id>/items/<item_id>/toggle", methods=["POST"])
+@login_required
+def shopping_toggle_item(list_id, item_id):
+    with _shopping_lock:
+        data = _load_shopping()
+        lst = _find_list(data, list_id)
+        if not lst:
+            return jsonify({"ok": False, "error": "list not found"}), HTTPStatus.NOT_FOUND
+        for it in lst["items"]:
+            if it["id"] == item_id:
+                it["checked"] = not it["checked"]
+        _save_shopping(data)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/shopping/lists/<list_id>/items/<item_id>", methods=["DELETE"])
+@login_required
+def shopping_delete_item(list_id, item_id):
+    with _shopping_lock:
+        data = _load_shopping()
+        lst = _find_list(data, list_id)
+        if lst:
+            lst["items"] = [it for it in lst["items"] if it["id"] != item_id]
+            _save_shopping(data)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/shopping/lists/<list_id>/clear-checked", methods=["POST"])
+@login_required
+def shopping_clear_checked(list_id):
+    with _shopping_lock:
+        data = _load_shopping()
+        lst = _find_list(data, list_id)
+        if lst:
+            lst["items"] = [it for it in lst["items"] if not it["checked"]]
+            _save_shopping(data)
+    return jsonify({"ok": True})
+
+
 def main():
     _ensure_data_dir()
     if not os.path.exists(SETTINGS_PATH):
         save_settings({})
-    host = os.environ.get("PI5_DASHBOARD_HOST", "127.0.0.1")
+    # 0.0.0.0 by default so the reverse proxy for shopping.bylotas.com can
+    # reach this process; @localhost_only + ProxyFix (see module docstring
+    # near _PROXY_HOPS) keep everything else off the network regardless.
+    host = os.environ.get("PI5_DASHBOARD_HOST", "0.0.0.0")
     port = int(os.environ.get("PI5_DASHBOARD_PORT", "8080"))
     app.run(host=host, port=port, threaded=True)
 

@@ -19,6 +19,15 @@
       <button class="nav-btn" data-view="weather" aria-label="Weather">
         <span class="ico">🌤️</span><span class="lbl">Weather</span>
       </button>
+      <button class="nav-btn" data-view="calendar" aria-label="Calendar">
+        <span class="ico">📅</span><span class="lbl">Calendar</span>
+      </button>
+      <button class="nav-btn" data-view="airquality" aria-label="Air Quality">
+        <span class="ico">🍃</span><span class="lbl">Air</span>
+      </button>
+      <a href="/shopping" class="nav-btn" aria-label="Shopping list">
+        <span class="ico">🛒</span><span class="lbl">Shopping</span>
+      </a>
       <button class="nav-btn" data-view="settings" aria-label="Settings">
         <span class="ico">⚙️</span><span class="lbl">Settings</span>
       </button>
@@ -135,6 +144,24 @@
           <div id="wx-forecast" class="wx-forecast"></div>
         </section>
 
+        <!-- CALENDAR -->
+        <section class="view" id="view-calendar">
+          <div class="section-head"><h1>Calendar</h1>
+            <button id="cal-refresh" class="btn btn-ghost">↻ Refresh</button></div>
+          <div class="card">
+            <div id="cal-events" class="loc-results"></div>
+          </div>
+        </section>
+
+        <!-- AIR QUALITY -->
+        <section class="view" id="view-airquality">
+          <div class="section-head"><h1>Air Quality</h1>
+            <button id="aq-refresh" class="btn btn-ghost">↻ Refresh</button></div>
+          <div class="card">
+            <div id="aq-body"></div>
+          </div>
+        </section>
+
         <!-- SETTINGS -->
         <section class="view" id="view-settings">
           <div class="section-head"><h1>Settings</h1></div>
@@ -218,11 +245,12 @@
           </div>
 
           <div class="card">
-            <h2>YouTube Playlists (all, incl. Liked)</h2>
+            <h2>Google Account (Playlists &amp; Calendar)</h2>
             <p class="muted small">A one-time Google sign-in that lists <b>every</b>
               playlist you own, including Liked videos — not just public ones on a
-              channel. Needs its own OAuth client (separate from the API key above);
-              see README.md for the one-time setup in Google Cloud Console.</p>
+              channel — and powers the Calendar screen. Needs its own OAuth client
+              (separate from the API key above); see README.md for the one-time
+              setup in Google Cloud Console.</p>
             <div class="quickplay">
               <input id="yt-oauth-id" type="text" placeholder="OAuth client id" />
               <button id="save-oauth" class="btn">Save</button>
@@ -236,6 +264,28 @@
               <span id="yt-oauth-state" class="muted"></span>
             </div>
             <div id="yt-device-code" class="current-loc hidden"></div>
+          </div>
+
+          <div class="card">
+            <h2>Shopping List (Entra ID)</h2>
+            <p class="muted small">Sign-in for the public shopping list at
+              <b>shopping.bylotas.com</b>. Register a single-tenant app in your
+              Entra tenant (NOT a work tenant) — see README.md for the exact
+              steps and redirect URI.</p>
+            <div class="quickplay">
+              <input id="entra-tenant-id" type="text" placeholder="Tenant ID or domain" />
+              <button id="save-entra" class="btn">Save</button>
+            </div>
+            <div class="quickplay">
+              <input id="entra-client-id" type="text" placeholder="Application (client) ID" />
+            </div>
+            <div class="quickplay">
+              <input id="entra-client-secret" type="text" placeholder="Client secret" />
+            </div>
+            <div class="quickplay">
+              <input id="entra-redirect-uri" type="text" placeholder="Redirect URI" />
+            </div>
+            <div id="entra-state" class="muted small"></div>
           </div>
 
           <div class="card">

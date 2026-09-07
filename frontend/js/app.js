@@ -7,8 +7,10 @@ import { initMusic } from "./music.js";
 import { initBluetooth, onSettingsOpened } from "./bluetooth.js";
 import { initSettings, refreshGoogleStatus } from "./settings.js";
 import { initDragScroll } from "./dragscroll.js";
+import { initCalendar, loadCalendar } from "./calendar.js";
+import { initAirQuality, loadAirQuality } from "./airquality.js";
 
-const VIEWS = ["home", "music", "weather", "settings"];
+const VIEWS = ["home", "music", "weather", "calendar", "airquality", "settings"];
 
 // Switch the active view. Exported so other modules can navigate.
 export function go(view) {
@@ -18,6 +20,8 @@ export function go(view) {
   document.querySelectorAll(".nav-btn[data-view]").forEach((btn) =>
     btn.classList.toggle("active", btn.getAttribute("data-view") === view));
   if (view === "weather") loadWeather();
+  if (view === "calendar") loadCalendar();
+  if (view === "airquality") loadAirQuality();
   if (view === "settings") { onSettingsOpened(); refreshGoogleStatus(); }
 }
 
@@ -59,6 +63,8 @@ async function main() {
   initMusic();
   initBluetooth();
   initWeather();
+  initCalendar();
+  initAirQuality();
 
   // Reload weather whenever the location or units change in Settings.
   window.addEventListener("location-changed", loadWeather);
